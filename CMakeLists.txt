@@ -38,5 +38,7 @@ target_include_directories(cpr PUBLIC cpr/include)
 target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
 add_library(cpr::cpr ALIAS cpr)
 
+add_subdirectory(nlhomann)
 add_executable(testnetfaucet testnetfaucet.cpp)
-target_link_libraries(testnetfaucet PUBLIC cpr::cpr)
+target_include_directories(testnetfaucet PUBLIC nlhomann/include)
+target_link_libraries(testnetfaucet PUBLIC cpr::cpr nlohmann_json)
