@@ -1,0 +1,42 @@
+<input id="address" type="text" style ="width:600px">
+<button id="post-btn">Get Faucet</button>
+
+<div style="margin-top:20px">
+    <span id="hash"></span>
+</div>
+<script>
+
+const button = document.getElementById('post-btn');
+button.addEventListener('click', async _ => {
+    
+    var user_address = document.getElementById('address').value;
+    console.log("user_address ",user_address);
+    
+    const params = {
+        "address":user_address
+      }
+      console.log("params",params);
+      const response = await fetch('http://149.102.146.173:19095/faucet', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(params)
+      });
+      
+      const data = await response.json();  
+      console.log("data",data);
+
+      if(data.STATUS == 'FAIL')
+      {
+        document.getElementById('hash').innerHTML = data.WARNING;
+        document.getElementById('hash').style.color = 'red';
+      }
+      else{
+        var link = "https://testnet.beldex.dev/tx/" + data.HASH;
+        document.getElementById('hash').innerHTML = "your transaction id is "+ `<a href="${link}">${data.HASH}</a>`;
+        document.getElementById('hash').style.color = 'green';
+      }
+      
+});
+</script>

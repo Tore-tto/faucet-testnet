@@ -6,13 +6,19 @@
 #include "served/served.hpp"
 #include <thread>
 #include <chrono>
+#include <vector>
 
 using json = nlohmann::json;
 using namespace std::chrono;
 using namespace std;
 
-std::string faucet ="/faucet";
-std::string port = "19090";
+bool ip_log = false;
+std::string http = "http://";
+std::string ip = "38.242.196.76:19092";
+std::string rpc = "/json_rpc";
+
+std::string faucet = "/faucet";
+std::string port = "19092";
 std::string IpAddress = "127.0.0.1";
 int ThreadCount = 10;
 
@@ -34,12 +40,14 @@ namespace validation
         return true;
     }
 }
-// Transfering to the required users
+
 namespace Faucet
 {
 
-    std::string transferFaucet(std::string _address)
+    std::string transferFaucet(std::string _address, int argc, char *argv[])
     {
+        // json transfer = R"({"jsonrpc":"2.0","id":"0","method":"transfer","params":{"destinations":[{"amount":100000000,"address":"BafzHZ1bF9BHjYNj4FyBsPip4atUyTX3LaPr4B7VGHRC5iuP2n4xAsDTViEL3h6CvaBy414gQe4HHcxEkJPGwNVZCaGkYFJ"}],"account_index":0,"subaddr_indices":[0],"priority":0,"ring_size":7,"get_tx_key": true}}
+        // )"_json;
 
         json transferBody = {
             {"jsonrpc", "2.0"},
@@ -47,28 +55,46 @@ namespace Faucet
             {"method", "transfer"},
             {"params", {{"destinations", {{{"amount", 1000000000}, {"address", _address}}}}, {"account_index", 0}, {"subaddr_indices", {0}}, {"priority", 0}, {"ring_size", 7}, {"get_tx_key", true}}}};
 
-        cpr::Response r = cpr::Post(cpr::Url{"http://38.242.196.76:19092/json_rpc"},
+        // condition to RPC command line arg
+        string ip_port;
+        for (int i = 0; i < argc; ++i)
+        {
+            string arg = argv[i];
+            if (0 == arg.find("--ip-port"))
+            {
+                ip_log = true;
+                size_t found = arg.find_first_of("--ip-port");
+                ip_port = arg.substr(found + 1);
+                string prefix = "-ip-port=";
+                ip_port.erase(0, prefix.length());
+            }
+        }
+
+        cpr::Response r = cpr::Post(cpr::Url{ip_log ? (http + ip_port + rpc) : (http + ip + rpc)}, //"http://38.242.196.76:19092/json_rpc"
                                     cpr::Body{transferBody.dump()},
                                     cpr::Header{{"Content-Type", "application/json"}});
         return r.text;
     }
 }
+
+// Function for json format
+
 auto successbody(served::response &res, json resultTx)
 {
-
     json result_body = {
         {"BDX", "Congrats you got today's reward"},
         {"STATUS", "OK"},
-        {"HASH", resultTx["result"]["tx_hash"]},
-        {"WAIT", "Wait for 24hrs !"}};
-
+        {"HASH", resultTx["result"]["tx_hash"]}};
     res << result_body.dump();
 }
 
-auto unsuccessbody(served::response &res)
+auto unsuccessbody(served::response &res, int hrs, int mins, int secs)
 {
+    cout << "REMAINING TIME: " << hrs << ":" << mins << ":" << secs << endl;
+    const char *a = " : ";
     json result_body = {
         {"STATUS", "FAIL"},
+        {"REMAINING TIME", hrs, a, mins, a, secs},
         {"WARNING", "ADDRESS ALREADY GOT THE REWARD"}};
     res << result_body.dump();
 }
@@ -81,9 +107,19 @@ private:
 public:
     routers(served::multiplexer mux_) : mux(mux_) {}
 
-    auto faucetSend()
+    auto faucetSend(int argc, char *argv[])
     {
-        return [&](served::response &res, const served::request &req)
+        // command line arg for json
+        bool help_log = false;
+        vector<string> cmdLineArgs(argv, argv + argc);
+        for (auto &arg : cmdLineArgs)
+        {
+            if (arg == "--json" || arg == "-json")
+            {
+                help_log = true;
+            }
+        }
+        return [help_log, argc, argv](served::response &res, const served::request &req)
         {
             std::string address;
             if (!validation::addressValidation(req, res, address))
@@ -121,23 +157,39 @@ public:
 
             for (int i = 0; i < content.size(); i++)
             {
-
-                if (content[i][0] != address) //
+                //  If address is not same it continuous.
+                if (content[i][0] != address)
                 {
                     continue;
                 }
-                else
+                else // If adddress is same or before 24hrs.
                 {
-
                     int i_dec = std::stoi(content[i][1]);
                     auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
                     if (i_dec >= givemetime)
                     {
                         dup = true;
-                        unsuccessbody(res);
+                        if (help_log)
+                        {
+                            json unsuccess_body = {
+                                {"Result", "FAIL"}, {"Data", "Address already got the reward !"}};
+                            cout << unsuccess_body << endl;
+                        }
+                        cout << "Address already got the reward" << endl;
+
+                        int hrs;
+                        int mins;
+                        int secs;
+                        int rem_time = i_dec - givemetime;
+                        hrs = rem_time / 3600;
+                        mins = (rem_time % 3600) / 60;
+                        secs = rem_time % 60;
+
+                        unsuccessbody(res, hrs, mins, secs);
                         break;
                     }
+
                     dup_line_num = i;
                     dup_add = true;
                 }
@@ -145,12 +197,16 @@ public:
 
             if (!dup)
             {
-
+                auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
+                auto endtime = givemetime + 86400;
                 for (;;)
                 {
                     auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
                     auto endtime = givemetime + 86400;
-                    std::string result = Faucet::transferFaucet(address);
+
+                    // calling transfer faucet for transaction.
+
+                    std::string result = Faucet::transferFaucet(address, argc, argv);
                     json resultTx = json::parse(result);
                     std::cout << resultTx << std::endl;
                     if (resultTx.contains("error"))
@@ -172,25 +228,21 @@ public:
                     }
                     else
                     {
-
-                        /*------------------------------------History creation for old and new address----------------------------*/
+                        /*------------------------------------History and data creation for old and new address----------------------------*/
                         ofstream myfile;
                         if (dup_add)
                         {
-
                             myfile.open("Data.csv");
                             for (int i = 0; i < content.size(); i++)
                             {
 
                                 if (i == dup_line_num)
                                 {
-
-                                    myfile << content[i][0] << "," << endtime << "\n";
+                                    myfile << content[i][0] << "," << endtime << "\n"; // same address and replacing time
                                 }
                                 else
                                 {
-
-                                    myfile << content[i][0] << "," << content[i][1] << "\n";
+                                    myfile << content[i][0] << "," << content[i][1] << "\n"; // same address and same time
                                 }
                             }
                             myfile.close();
@@ -198,9 +250,7 @@ public:
                         else
                         {
                             myfile.open("Data.csv", ios::out | ios::app);
-
                             myfile << address << "," << endtime << "\n";
-
                             myfile.close();
                         }
                         ofstream myfile1;
@@ -208,18 +258,23 @@ public:
                         myfile1 << address << "," << ctime(&givemetime) << endl;
 
                         myfile1.close();
-
                         successbody(res, resultTx);
                         break;
                     }
+                }
+                if (help_log)
+                {
+                    json success_body = {
+                        {{"Result", "OK"}, {"Data", "Congrats you got the today's reward:1bdx"}}};
+                    cout << success_body << endl;
                 }
             }
         };
     }
 
-    void EndpointHandler()
+    void EndpointHandler(int argc, char *argv[])
     {
-        mux.handle(faucet).post(faucetSend());
+        mux.handle(faucet).post(faucetSend(argc, argv));
     }
 
     void StartServer()
@@ -230,11 +285,11 @@ public:
     }
 };
 
-int main()
+int main(int argc, char *argv[])
 {
 
     served::multiplexer mux_;
     routers router(mux_);
-    router.EndpointHandler();
+    router.EndpointHandler(argc, argv);
     router.StartServer();
 }
