@@ -1,0 +1,67 @@
+<head>
+  <link rel="shortcut icon" href="https://avatars.githubusercontent.com/u/44291167?s=200&v=4" type="image/png">
+  <title> Beldex Faucet </title>
+</head>
+<h1 style="text-align: center"> Beldex TESTNET Faucet</h1><br>
+<style>
+  .button {
+    background-color: #4CAF50; /* Green */
+    border: none;
+    color: white;
+    padding: 5px 10px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    margin: 4px 2px;
+    border-radius:5px;
+    cursor: pointer;
+  }
+  </style>
+
+<header>Enter Your Beldex Testnet Address Below <br></header><br>
+<input id="address" type="text" style ="width:760px"><br>
+<button id="post-btn" class="button">Get Faucet</button>
+<body style="background-color:darkgrey;text-align: center">
+
+<div style="margin-top:20px">
+  <span id="hash"></span>
+</div>
+</body>
+<script>
+
+const button = document.getElementById('post-btn');
+button.addEventListener('click', async _ => {
+  
+  var user_address = document.getElementById('address').value;
+  console.log("user_address ",user_address);
+  
+  const params = {
+      "address":user_address
+    }
+    console.log("params",params);
+    const response = await fetch('http://149.102.146.173:19095/faucet', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(params)
+    });
+    
+    const data = await response.json();  
+    console.log("data",data);
+
+    if(data.STATUS == 'FAIL')
+    {
+      document.getElementById('hash').innerHTML = data.WARNING;
+      document.getElementById('hash').style.color = 'red';
+    }
+    else{
+      var link = "https://testnet.beldex.dev/tx/" + data.HASH;
+      document.getElementById('hash').innerHTML = "your transaction id is "+ `<a href="${link}">${data.HASH}</a>`;
+      document.getElementById('hash').style.color = 'green';
+    }
+    
+});
+
+</script>
