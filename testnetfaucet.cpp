@@ -6,13 +6,19 @@
 #include "served/served.hpp"
 #include <thread>
 #include <chrono>
+#include <vector>
 
 using json = nlohmann::json;
 using namespace std::chrono;
 using namespace std;
 
-std::string faucet ="/faucet";
-std::string port = "19090";
+bool ip_log = false;
+std::string http = "http://";
+std::string ip = "38.242.196.76:19092";
+std::string rpc = "/json_rpc";
+
+std::string faucet = "/faucet";
+std::string port = "19092";
 std::string IpAddress = "127.0.0.1";
 int ThreadCount = 10;
 
@@ -34,12 +40,14 @@ namespace validation
         return true;
     }
 }
-// Transfering to the required users
+
 namespace Faucet
 {
 
-    std::string transferFaucet(std::string _address)
+    std::string transferFaucet(std::string _address, int argc, char *argv[])
     {
+        // json transfer = R"({"jsonrpc":"2.0","id":"0","method":"transfer","params":{"destinations":[{"amount":100000000,"address":"BafzHZ1bF9BHjYNj4FyBsPip4atUyTX3LaPr4B7VGHRC5iuP2n4xAsDTViEL3h6CvaBy414gQe4HHcxEkJPGwNVZCaGkYFJ"}],"account_index":0,"subaddr_indices":[0],"priority":0,"ring_size":7,"get_tx_key": true}}
+        // )"_json;
 
         json transferBody = {
             {"jsonrpc", "2.0"},
@@ -47,7 +55,22 @@ namespace Faucet
             {"method", "transfer"},
             {"params", {{"destinations", {{{"amount", 1000000000}, {"address", _address}}}}, {"account_index", 0}, {"subaddr_indices", {0}}, {"priority", 0}, {"ring_size", 7}, {"get_tx_key", true}}}};
 
-        cpr::Response r = cpr::Post(cpr::Url{"http://38.242.196.76:19092/json_rpc"}, 
+        // condition to RPC command line arg
+        string ip_port;
+        for (int i = 0; i < argc; ++i)
+        {
+            string arg = argv[i];
+            if (0 == arg.find("--ip-port"))
+            {
+                ip_log = true;
+                size_t found = arg.find_first_of("--ip-port");
+                ip_port = arg.substr(found + 1);
+                string prefix = "-ip-port=";
+                ip_port.erase(0, prefix.length());
+            }
+        }
+
+        cpr::Response r = cpr::Post(cpr::Url{ip_log ? (http + ip_port + rpc) : (http + ip + rpc)}, //"http://38.242.196.76:19092/json_rpc"
                                     cpr::Body{transferBody.dump()},
                                     cpr::Header{{"Content-Type", "application/json"}});
         return r.text;
@@ -58,21 +81,21 @@ namespace Faucet
 
 auto successbody(served::response &res, json resultTx)
 {
-
     json result_body = {
         {"BDX", "Congrats you got today's reward"},
         {"STATUS", "OK"},
         {"HASH", resultTx["result"]["tx_hash"]}};
-
     res << result_body.dump();
 }
 
 auto unsuccessbody(served::response &res, int hrs, int mins, int secs)
 {
+    cout << "REMAINING TIME: " << hrs << ":" << mins << ":" << secs << endl;
+    const char *a = " : ";
     json result_body = {
         {"STATUS", "FAIL"},
-        {"WARNING", "ADDRESS ALREADY GOT THE REWARD"},
-        {"REMAINIG_TIME", {"hrs", hrs}, {"mins", mins}, {"secs", secs}}};
+        {"REMAINING TIME", hrs, a, mins, a, secs},
+        {"WARNING", "ADDRESS ALREADY GOT THE REWARD"}};
     res << result_body.dump();
 }
 
@@ -96,7 +119,7 @@ public:
                 help_log = true;
             }
         }
-        return [help_log](served::response &res, const served::request &req)
+        return [help_log, argc, argv](served::response &res, const served::request &req)
         {
             std::string address;
             if (!validation::addressValidation(req, res, address))
@@ -154,6 +177,7 @@ public:
                             cout << unsuccess_body << endl;
                         }
                         cout << "Address already got the reward" << endl;
+
                         int hrs;
                         int mins;
                         int secs;
@@ -161,6 +185,7 @@ public:
                         hrs = rem_time / 3600;
                         mins = (rem_time % 3600) / 60;
                         secs = rem_time % 60;
+
                         unsuccessbody(res, hrs, mins, secs);
                         break;
                     }
@@ -181,7 +206,7 @@ public:
 
                     // calling transfer faucet for transaction.
 
-                    std::string result = Faucet::transferFaucet(address);
+                    std::string result = Faucet::transferFaucet(address, argc, argv);
                     json resultTx = json::parse(result);
                     std::cout << resultTx << std::endl;
                     if (resultTx.contains("error"))
@@ -239,9 +264,8 @@ public:
                 }
                 if (help_log)
                 {
-                    auto a = ctime(&endtime);
                     json success_body = {
-                        {{"Result", "OK"}, {"Data", "Congrats you got the today's reward:1bdx"}, {"Time", a}}};
+                        {{"Result", "OK"}, {"Data", "Congrats you got the today's reward:1bdx"}}};
                     cout << success_body << endl;
                 }
             }
