@@ -14,6 +14,8 @@ Api for providing BDX testnet faucets
 
 `After build the faucet if you need to print the json in termianl means just add`
 
-`./testnet --json` | `./testnet -json`
+`./testnetfaucet --json` | `./testnetfaucet -json`
 
+>FOR USER RPC
 
+`./testnetfaucet --ip-port "ip:port"`
