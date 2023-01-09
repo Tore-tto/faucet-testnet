@@ -1,6 +1,7 @@
 # faucet-testnet
 Api for providing BDX testnet faucets
 
+
 >PROCEDURE TO BUILD
 ```
  cd faucet-testnet 
@@ -18,4 +19,6 @@ Api for providing BDX testnet faucets
 
 >FOR USER RPC
 
-`./testnetfaucet --ip-port "ip:port"`
+`./testnetfaucet --ip-port="ip:port"`
+
+
