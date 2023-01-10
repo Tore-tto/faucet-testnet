@@ -13,7 +13,7 @@ Api for providing BDX testnet faucets
 ```
 >FOR JSON
 
-`After build the faucet if you need to print the json in termianl means just add`
+`After build the faucet if you need to print the json in terminal means just add`
 
 `./testnetfaucet --json` | `./testnetfaucet -json`
 

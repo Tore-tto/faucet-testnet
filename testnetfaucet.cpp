@@ -18,7 +18,7 @@ std::string ip = "38.242.196.76:19092";
 std::string rpc = "/json_rpc";
 
 std::string faucet = "/faucet";
-std::string port = "19092";
+std::string port = "19095";
 std::string IpAddress = "127.0.0.1";
 int ThreadCount = 10;
 
@@ -53,7 +53,7 @@ namespace Faucet
             {"jsonrpc", "2.0"},
             {"id", "0"},
             {"method", "transfer"},
-            {"params", {{"destinations", {{{"amount", 1000000000}, {"address", _address}}}}, {"account_index", 0}, {"subaddr_indices", {0}}, {"priority", 0}, {"ring_size", 7}, {"get_tx_key", true}}}};
+            {"params", {{"destinations", {{{"amount", 10000000000}, {"address", _address}}}}, {"account_index", 0}, {"subaddr_indices", {0}}, {"priority", 0}, {"ring_size", 7}, {"get_tx_key", true}}}};
 
         // condition to RPC command line arg
         string ip_port;
