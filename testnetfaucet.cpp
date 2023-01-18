@@ -91,10 +91,9 @@ auto successbody(served::response &res, json resultTx)
 auto unsuccessbody(served::response &res, int hrs, int mins, int secs)
 {
     cout << "REMAINING TIME: " << hrs << ":" << mins << ":" << secs << endl;
-    const char *a = " : ";
     json result_body = {
         {"STATUS", "FAIL"},
-        {"REMAINING TIME", hrs, a, mins, a, secs},
+        {"REMAINING TIME", {hrs,mins,secs}},
         {"WARNING", "ADDRESS ALREADY GOT THE REWARD"}};
     res << result_body.dump();
 }
