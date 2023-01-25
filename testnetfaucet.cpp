@@ -7,11 +7,13 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <map>
 
 using json = nlohmann::json;
 using namespace std::chrono;
 using namespace std;
 
+map<string, bool> loop_address;
 bool ip_log = false;
 std::string http = "http://";
 std::string ip = "38.242.196.76:19092";
@@ -93,7 +95,7 @@ auto unsuccessbody(served::response &res, int hrs, int mins, int secs)
     cout << "REMAINING TIME: " << hrs << ":" << mins << ":" << secs << endl;
     json result_body = {
         {"STATUS", "FAIL"},
-        {"REMAINING TIME", {hrs,mins,secs}},
+        {"REMAINING TIME", {hrs, mins, secs}},
         {"WARNING", "ADDRESS ALREADY GOT THE REWARD"}};
     res << result_body.dump();
 }
@@ -125,6 +127,12 @@ public:
             {
                 return;
             }
+
+            if (loop_address[address] == true)
+            {
+                return;
+            }
+            loop_address[address] = true;
 
             int dup_line_num = 0;
             bool dup = false;
@@ -185,6 +193,7 @@ public:
                         mins = (rem_time % 3600) / 60;
                         secs = rem_time % 60;
 
+                        loop_address[address] = false;
                         unsuccessbody(res, hrs, mins, secs);
                         break;
                     }
@@ -257,6 +266,7 @@ public:
                         myfile1 << address << "," << ctime(&givemetime) << endl;
 
                         myfile1.close();
+                        loop_address[address] = false;
                         successbody(res, resultTx);
                         break;
                     }
