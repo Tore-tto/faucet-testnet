@@ -1,5 +1,14 @@
 {
     "files.associations": {
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "*.ipp": "cpp",
+        "any": "cpp",
+        "optional": "cpp",
+        "memory_resource": "cpp",
+        "new": "cpp",
+        "streambuf": "cpp",
+        "functional": "cpp",
+        "typeinfo": "cpp",
+        "variant": "cpp"
     }
 }
