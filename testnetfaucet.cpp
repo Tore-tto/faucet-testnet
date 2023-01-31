@@ -134,8 +134,6 @@ public:
             bool his = false;
             data.getvalue(address);
             auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-            std::cout << data.last_entry_time << std::endl;
-
             if (data.last_entry_time == 0)
             {
                 //new entry
