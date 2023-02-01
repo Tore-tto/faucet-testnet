@@ -1,9 +1,11 @@
 #include <iostream>
-#include <fstream>
-#include <sstream>
+#include <chrono>
+#include <map>
+#include <vector>
 #include "cpr/cpr.h"
 #include "nlohmann/json.hpp"
 #include "served/served.hpp"
+#include "database.h"
 #include <thread>
 #include <chrono>
 #include <vector>
@@ -27,7 +29,6 @@ int ThreadCount = 10;
 namespace validation
 {
     // user address validation
-
     bool addressValidation(const served::request &req, served::response &res, std::string &_address)
     {
         json request = json::parse(req.body());
@@ -38,14 +39,12 @@ namespace validation
         }
 
         _address = request["address"];
-
         return true;
     }
 }
 
 namespace Faucet
 {
-
     std::string transferFaucet(std::string _address, int argc, char *argv[])
     {
         // json transfer = R"({"jsonrpc":"2.0","id":"0","method":"transfer","params":{"destinations":[{"amount":100000000,"address":"BafzHZ1bF9BHjYNj4FyBsPip4atUyTX3LaPr4B7VGHRC5iuP2n4xAsDTViEL3h6CvaBy414gQe4HHcxEkJPGwNVZCaGkYFJ"}],"account_index":0,"subaddr_indices":[0],"priority":0,"ring_size":7,"get_tx_key": true}}
@@ -80,7 +79,6 @@ namespace Faucet
 }
 
 // Function for json format
-
 auto successbody(served::response &res, json resultTx)
 {
     json result_body = {
@@ -108,7 +106,7 @@ private:
 public:
     routers(served::multiplexer mux_) : mux(mux_) {}
 
-    auto faucetSend(int argc, char *argv[])
+    auto faucetSend(int argc, char *argv[], database _data)
     {
         // command line arg for json
         bool help_log = false;
@@ -120,100 +118,27 @@ public:
                 help_log = true;
             }
         }
-        return [help_log, argc, argv](served::response &res, const served::request &req)
+        return [help_log, argc, argv, _data](served::response &res, const served::request &req)
         {
+            database data = _data;
             std::string address;
             if (!validation::addressValidation(req, res, address))
             {
                 return;
             }
-
             if (loop_address[address] == true)
             {
                 return;
             }
             loop_address[address] = true;
-
-            int dup_line_num = 0;
-            bool dup = false;
-            vector<vector<string>> content;
-            vector<string> row;
-            string a, line, word;
-            fstream file("Data.csv", ios::in);
-            bool dup_add = false;
-
-            if (file.is_open())
+            bool his = false;
+            data.getvalue(address);
+            auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
+            if (data.last_entry_time == 0)
             {
-                while (getline(file, line))
-                {
-                    row.clear();
-                    stringstream str(line);
-                    while (getline(str, word, ','))
-                    {
-                        row.push_back(word);
-                    }
-
-                    content.push_back(row);
-                }
-                file.close();
-            }
-            else
-            {
-                cout << "Could not open the file\n";
-            }
-
-            for (int i = 0; i < content.size(); i++)
-            {
-                //  If address is not same it continuous.
-                if (content[i][0] != address)
-                {
-                    continue;
-                }
-                else // If adddress is same or before 24hrs.
-                {
-                    int i_dec = std::stoi(content[i][1]);
-                    auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-
-                    if (i_dec >= givemetime)
-                    {
-                        dup = true;
-                        if (help_log)
-                        {
-                            json unsuccess_body = {
-                                {"Result", "FAIL"}, {"Data", "Address already got the reward !"}};
-                            cout << unsuccess_body << endl;
-                        }
-                        cout << "Address already got the reward" << endl;
-
-                        int hrs;
-                        int mins;
-                        int secs;
-                        int rem_time = i_dec - givemetime;
-                        hrs = rem_time / 3600;
-                        mins = (rem_time % 3600) / 60;
-                        secs = rem_time % 60;
-
-                        loop_address[address] = false;
-                        unsuccessbody(res, hrs, mins, secs);
-                        break;
-                    }
-
-                    dup_line_num = i;
-                    dup_add = true;
-                }
-            }
-
-            if (!dup)
-            {
-                auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-                auto endtime = givemetime + 86400;
+                //new entry
                 for (;;)
                 {
-                    auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-                    auto endtime = givemetime + 86400;
-
-                    // calling transfer faucet for transaction.
-
                     std::string result = Faucet::transferFaucet(address, argc, argv);
                     json resultTx = json::parse(result);
                     std::cout << resultTx << std::endl;
@@ -236,54 +161,94 @@ public:
                     }
                     else
                     {
-                        /*------------------------------------History and data creation for old and new address----------------------------*/
-                        ofstream myfile;
-                        if (dup_add)
+                        his = true;
+                        auto updatetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
+                        data.insertData(address, updatetime);
+                        if (help_log)
                         {
-                            myfile.open("Data.csv");
-                            for (int i = 0; i < content.size(); i++)
-                            {
-
-                                if (i == dup_line_num)
-                                {
-                                    myfile << content[i][0] << "," << endtime << "\n"; // same address and replacing time
-                                }
-                                else
-                                {
-                                    myfile << content[i][0] << "," << content[i][1] << "\n"; // same address and same time
-                                }
-                            }
-                            myfile.close();
+                            json success_body = {
+                                {{"Result", "OK"}, {"Data", "Congrats you got the today's reward:1bdx"}}};
+                            cout << success_body << endl;
                         }
-                        else
-                        {
-                            myfile.open("Data.csv", ios::out | ios::app);
-                            myfile << address << "," << endtime << "\n";
-                            myfile.close();
-                        }
-                        ofstream myfile1;
-                        myfile1.open("History.csv", ios::out | ios::app);
-                        myfile1 << address << "," << ctime(&givemetime) << endl;
 
-                        myfile1.close();
-                        loop_address[address] = false;
                         successbody(res, resultTx);
+                        loop_address[address] = false;
                         break;
                     }
                 }
+            }
+            else if ((givemetime - data.last_entry_time) > 86400)
+            {
+                //update entry
+                for (;;)
+                {
+                    std::string result = Faucet::transferFaucet(address, argc, argv);
+                    json resultTx = json::parse(result);
+                    std::cout << resultTx << std::endl;
+                    if (resultTx.contains("error"))
+                    {
+                        if (resultTx["error"]["code"] != -2)
+                        {
+                            if (resultTx["error"]["code"] == -37)
+                            {
+                                std::cout << "not enough money\n";
+                                std::this_thread::sleep_for(std::chrono::seconds(70));
+                                continue;
+                            }
+                            std::cout << "output distribution\n";
+                            std::this_thread::sleep_for(std::chrono::seconds(10));
+                            continue;
+                        }
+                        res << resultTx["error"]["message"];
+                        break;
+                    }
+                    else
+                    {
+                        his = true;
+                        auto updatetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
+                        data.updateData(address, updatetime);
+                        if (help_log)
+                        {
+                            json success_body = {
+                                {{"Result", "OK"}, {"Data", "Congrats you got the today's reward:1bdx"}}};
+                            cout << success_body << endl;
+                        }
+                        successbody(res, resultTx);
+                        loop_address[address] = false;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                auto updatetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
+                int hrs, mins, secs, rem_time = (data.last_entry_time + 86400) - updatetime;
+                hrs = rem_time / 3600;
+                mins = (rem_time % 3600) / 60;
+                secs = rem_time % 60;
+                std::cout << "address already got reward\n";
                 if (help_log)
                 {
-                    json success_body = {
-                        {{"Result", "OK"}, {"Data", "Congrats you got the today's reward:1bdx"}}};
-                    cout << success_body << endl;
+                    json unsuccess_body = {
+                        {"Result", "FAIL"}, {"Data", "Address already got the reward !"}};
+                    cout << unsuccess_body << endl;
                 }
+                unsuccessbody(res, hrs, mins, secs);
+                loop_address[address] = false;
+            }
+            if (his)
+            {
+                auto updatetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
+                string current_time_str = std::ctime(&updatetime);
+                current_time_str.pop_back();
+                data.historyinsert(address, current_time_str);
             }
         };
     }
 
-    void EndpointHandler(int argc, char *argv[])
+    void EndpointHandler(int argc, char *argv[], database _data)
     {
-        mux.handle(faucet).post(faucetSend(argc, argv));
+        mux.handle(faucet).post(faucetSend(argc, argv, _data));
     }
 
     void StartServer()
@@ -296,9 +261,17 @@ public:
 
 int main(int argc, char *argv[])
 {
+    // database operations
+    database data;
+    data.opendatabase();
+    data.tableCreation();
 
+    // server operations
     served::multiplexer mux_;
     routers router(mux_);
-    router.EndpointHandler(argc, argv);
+    router.EndpointHandler(argc, argv, data);
     router.StartServer();
+
+    data.closeDatabase();
+    return 0;
 }

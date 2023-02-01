@@ -40,6 +40,12 @@ add_library(cpr::cpr ALIAS cpr)
 
 add_subdirectory(nlhomann)
 add_subdirectory(served)
-add_executable(testnetfaucet testnetfaucet.cpp)
+add_executable(testnetfaucet testnetfaucet.cpp database.cpp)
 target_include_directories(testnetfaucet PUBLIC nlhomann/include served/src)
-target_link_libraries(testnetfaucet PUBLIC cpr::cpr nlohmann_json served)
+
+find_package (SQLite3)
+
+include_directories(${SQLite3_INCLUDE_DIRS})
+message(STATUS ${SQLite3_INCLUDE_DIRS})
+message(STATUS ${SQLite3_LIBRARIES})
+target_link_libraries(testnetfaucet PUBLIC cpr::cpr nlohmann_json served ${SQLite3_LIBRARIES})
