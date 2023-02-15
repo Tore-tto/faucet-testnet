@@ -30,6 +30,23 @@ if(NOT BUILD_STATIC_DEPS)
   endif()
 endif()
 
+#for LMDB
+# Check whether we're on a 32-bit or 64-bit system
+if(CMAKE_SIZEOF_VOID_P EQUAL "8")
+  set(DEFAULT_BUILD_64 ON)
+else()
+  set(DEFAULT_BUILD_64 OFF)
+endif()
+option(BUILD_64 "Build for 64-bit? 'OFF' builds for 32-bit." ${DEFAULT_BUILD_64})
+
+if(BUILD_64)
+  set(ARCH_WIDTH "64")
+else()
+  set(ARCH_WIDTH "32")
+endif()
+message(STATUS "Building for a ${ARCH_WIDTH}-bit system")
+
+
 file(GLOB cpr_sources ${conf_depends} cpr/cpr/*.cpp)
 
 add_library(cpr STATIC EXCLUDE_FROM_ALL ${cpr_sources})
@@ -38,14 +55,14 @@ target_include_directories(cpr PUBLIC cpr/include)
 target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
 add_library(cpr::cpr ALIAS cpr)
 
+#for LMDB
+find_package (Threads)
+add_subdirectory(db_drivers)
+add_subdirectory(db)
+
 add_subdirectory(nlhomann)
 add_subdirectory(served)
-add_executable(testnetfaucet testnetfaucet.cpp database.cpp)
-target_include_directories(testnetfaucet PUBLIC nlhomann/include served/src)
+add_executable(testnetfaucet testnetfaucet.cpp)
+target_include_directories(testnetfaucet PUBLIC db nlhomann/include served/src)
 
-find_package (SQLite3)
-
-include_directories(${SQLite3_INCLUDE_DIRS})
-message(STATUS ${SQLite3_INCLUDE_DIRS})
-message(STATUS ${SQLite3_LIBRARIES})
-target_link_libraries(testnetfaucet PUBLIC cpr::cpr nlohmann_json served ${SQLite3_LIBRARIES})
+target_link_libraries(testnetfaucet PUBLIC database cpr::cpr nlohmann_json served)
