@@ -2,14 +2,12 @@
 #include <chrono>
 #include <map>
 #include <vector>
+#include <lmdb.h>
+#include <filesystem>
 #include "cpr/cpr.h"
 #include "nlohmann/json.hpp"
 #include "served/served.hpp"
 #include "database.h"
-#include <thread>
-#include <chrono>
-#include <vector>
-#include <map>
 
 using json = nlohmann::json;
 using namespace std::chrono;
@@ -106,7 +104,7 @@ private:
 public:
     routers(served::multiplexer mux_) : mux(mux_) {}
 
-    auto faucetSend(int argc, char *argv[], database _data)
+    auto faucetSend(int argc, char *argv[])
     {
         // command line arg for json
         bool help_log = false;
@@ -118,9 +116,8 @@ public:
                 help_log = true;
             }
         }
-        return [help_log, argc, argv, _data](served::response &res, const served::request &req)
+        return [help_log, argc, argv](served::response &res, const served::request &req)
         {
-            database data = _data;
             std::string address;
             if (!validation::addressValidation(req, res, address))
             {
@@ -132,11 +129,31 @@ public:
             }
             loop_address[address] = true;
             bool his = false;
-            data.getvalue(address);
-            auto givemetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-            if (data.last_entry_time == 0)
+            bool reward_got = true;
+            // Open the LMDB database
+            MDB_env *env;
+            mdb_env_create(&env);
+            mdb_env_set_mapsize(env, 1 * 1024 * 1024 * 1024); //1 * 1024 * 1024 * 1024 --> 1GB
+            mdb_env_set_maxdbs(env, 2);
+            mdb_env_open(env, "../DataDB", 0, 0664); 
+
+            MDB_txn *txn;
+            mdb_txn_begin(env, NULL, 0, &txn);
+
+            MDB_dbi data_db, history_db;
+           
+            mdb_dbi_open(txn, "data_db", MDB_CREATE, &data_db);
+            mdb_dbi_open(txn, "history_db", MDB_CREATE, &history_db);
+            
+            MDB_val key, value;
+            std::chrono::time_point<std::chrono::system_clock> givemetime = std::chrono::system_clock::now();
+
+            key.mv_data = &address[0];
+            key.mv_size = address.size();
+            int result = mdb_get(txn, data_db, &key, &value);
+            if (result == MDB_NOTFOUND)
             {
-                //new entry
+                // User has not entered before, so store the current time as the entry time
                 for (;;)
                 {
                     std::string result = Faucet::transferFaucet(address, argc, argv);
@@ -161,13 +178,16 @@ public:
                     }
                     else
                     {
+                        reward_got = false;
                         his = true;
-                        auto updatetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-                        data.insertData(address, updatetime);
+                        value.mv_data = &givemetime;
+                        value.mv_size = sizeof(givemetime);
+                        mdb_put(txn, data_db, &key, &value, 0);
+
                         if (help_log)
                         {
                             json success_body = {
-                                {{"Result", "OK"}, {"Data", "Congrats you got the today's reward:1bdx"}}};
+                                {{"Result", "OK"}, {"Data", "Congrats you got the today's reward"}}};
                             cout << success_body << endl;
                         }
 
@@ -177,56 +197,70 @@ public:
                     }
                 }
             }
-            else if ((givemetime - data.last_entry_time) > 86400)
+            else
             {
-                //update entry
-                for (;;)
+                // User has entered before, so check if 24 hours have passed
+                std::chrono::time_point<std::chrono::system_clock> last_entry = *(std::chrono::time_point<std::chrono::system_clock> *)value.mv_data;
+                std::chrono::duration<double> diff = givemetime - last_entry;
+
+                if (diff.count() >= 24 * 60 * 60)
                 {
-                    std::string result = Faucet::transferFaucet(address, argc, argv);
-                    json resultTx = json::parse(result);
-                    std::cout << resultTx << std::endl;
-                    if (resultTx.contains("error"))
+                    // update entry
+                    for (;;)
                     {
-                        if (resultTx["error"]["code"] != -2)
+                        std::string result = Faucet::transferFaucet(address, argc, argv);
+                        json resultTx = json::parse(result);
+                        std::cout << resultTx << std::endl;
+                        if (resultTx.contains("error"))
                         {
-                            if (resultTx["error"]["code"] == -37)
+                            if (resultTx["error"]["code"] != -2)
                             {
-                                std::cout << "not enough money\n";
-                                std::this_thread::sleep_for(std::chrono::seconds(70));
+                                if (resultTx["error"]["code"] == -37)
+                                {
+                                    std::cout << "not enough money\n";
+                                    std::this_thread::sleep_for(std::chrono::seconds(70));
+                                    continue;
+                                }
+                                std::cout << "output distribution\n";
+                                std::this_thread::sleep_for(std::chrono::seconds(10));
                                 continue;
                             }
-                            std::cout << "output distribution\n";
-                            std::this_thread::sleep_for(std::chrono::seconds(10));
-                            continue;
+                            res << resultTx["error"]["message"];
+                            break;
                         }
-                        res << resultTx["error"]["message"];
-                        break;
-                    }
-                    else
-                    {
-                        his = true;
-                        auto updatetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-                        data.updateData(address, updatetime);
-                        if (help_log)
+                        else
                         {
-                            json success_body = {
-                                {{"Result", "OK"}, {"Data", "Congrats you got the today's reward:1bdx"}}};
-                            cout << success_body << endl;
+                            reward_got = false;
+                            his = true;
+                            // More than 24 hours have passed, so store the current time and new user name as the entry time
+                            value.mv_data = &givemetime;
+                            value.mv_size = sizeof(givemetime);
+                            mdb_put(txn, data_db, &key, &value, 0);
+
+                            if (help_log)
+                            {
+                                json success_body = {
+                                    {{"Result", "OK"}, {"Data", "Congrats you got the today's reward"}}};
+                                cout << success_body << endl;
+                            }
+                            successbody(res, resultTx);
+                            loop_address[address] = false;
+                            break;
                         }
-                        successbody(res, resultTx);
-                        loop_address[address] = false;
-                        break;
                     }
                 }
             }
-            else
+            if (reward_got)
             {
+                std::chrono::time_point<std::chrono::system_clock> last_entry = *(std::chrono::time_point<std::chrono::system_clock> *)value.mv_data;
+                time_t entry_time_t = std::chrono::system_clock::to_time_t(last_entry);
+
                 auto updatetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-                int hrs, mins, secs, rem_time = (data.last_entry_time + 86400) - updatetime;
+                int hrs, mins, secs, rem_time = (entry_time_t + 86400) - updatetime;
                 hrs = rem_time / 3600;
                 mins = (rem_time % 3600) / 60;
                 secs = rem_time % 60;
-                std::cout << "address already got reward\n";
+                std::cout << "Address: " << address << " already got reward\n";
                 if (help_log)
                 {
                     json unsuccess_body = {
@@ -236,19 +270,32 @@ public:
                 unsuccessbody(res, hrs, mins, secs);
                 loop_address[address] = false;
             }
+
             if (his)
             {
-                auto updatetime = chrono::system_clock::to_time_t(chrono::system_clock::now());
-                string current_time_str = std::ctime(&updatetime);
-                current_time_str.pop_back();
-                data.historyinsert(address, current_time_str);
+                std::chrono::time_point<std::chrono::system_clock> current_time = std::chrono::system_clock::now();
+                std::string entry_key = address + ":" + std::to_string(current_time.time_since_epoch().count());
+
+                MDB_val key, value;
+                key.mv_data = &entry_key[0];
+                key.mv_size = entry_key.size();
+                value.mv_data = &current_time;
+                value.mv_size = sizeof(current_time);
+
+                mdb_put(txn, history_db, &key, &value, 0);
             }
+            mdb_txn_commit(txn);
+            mdb_dbi_close(env, history_db);
+
+            // Close the LMDB database
+            mdb_dbi_close(env, data_db);
+            mdb_env_close(env);
         };
     }
 
-    void EndpointHandler(int argc, char *argv[], database _data)
+    void EndpointHandler(int argc, char *argv[])
     {
-        mux.handle(faucet).post(faucetSend(argc, argv, _data));
+        mux.handle(faucet).post(faucetSend(argc, argv));
     }
 
     void StartServer()
@@ -261,17 +308,23 @@ public:
 
 int main(int argc, char *argv[])
 {
-    // database operations
-    database data;
-    data.opendatabase();
-    data.tableCreation();
+    // LMDB Folder open
+    string Data_folder = "../DataDB";
+    int check = filesystem::create_directories(Data_folder);
+    if (check)
+    {
+        std::cout << "Folder created" << std::endl;
+    }
+    else
+    {
+        std::cout << "Folder already exist" << std::endl;
+    }
 
     // server operations
     served::multiplexer mux_;
     routers router(mux_);
-    router.EndpointHandler(argc, argv, data);
+    router.EndpointHandler(argc, argv);
     router.StartServer();
 
-    data.closeDatabase();
     return 0;
 }

@@ -1,6 +1,9 @@
 # faucet-testnet
 Api for providing BDX testnet faucets
 
+>CLONING THE REPOSITORY
+
+`git clone --recursive https://github.com/victor-tucci/faucet-testnet.git`
 
 >PROCEDURE TO BUILD
 ```
@@ -20,5 +23,3 @@ Api for providing BDX testnet faucets
 >FOR USER RPC
 
 `./testnetfaucet --ip-port="ip:port"`
-
-
