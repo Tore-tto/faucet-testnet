@@ -23,3 +23,9 @@ Api for providing BDX testnet faucets
 >FOR USER RPC
 
 `./testnetfaucet --ip-port="ip:port"`
+
+>TO EXPORT THE LMDB TO CSV
+
+`./data_table --csv | ./data_table -csv`
+
+`./history_table --csv | ./history_table -csv`

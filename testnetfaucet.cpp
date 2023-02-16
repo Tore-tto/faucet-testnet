@@ -7,7 +7,6 @@
 #include "cpr/cpr.h"
 #include "nlohmann/json.hpp"
 #include "served/served.hpp"
-#include "database.h"
 
 using json = nlohmann::json;
 using namespace std::chrono;
