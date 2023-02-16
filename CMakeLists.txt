@@ -9,17 +9,17 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-if (NOT CMAKE_VERSION VERSION_LESS 3.12)
-    set(conf_depends "CONFIGURE_DEPENDS")
+if(NOT CMAKE_VERSION VERSION_LESS 3.12)
+  set(conf_depends "CONFIGURE_DEPENDS")
 else()
-    set(conf_depends "")
+  set(conf_depends "")
 endif()
 
 if(NOT BUILD_STATIC_DEPS)
   find_package(CURL REQUIRED COMPONENTS HTTP HTTPS SSL)
 
   # CURL::libcurl wasn't added to FindCURL until cmake 3.12, so add it if necessary
-  if (CMAKE_VERSION VERSION_LESS 3.12 AND NOT TARGET CURL::libcurl)
+  if(CMAKE_VERSION VERSION_LESS 3.12 AND NOT TARGET CURL::libcurl)
     add_library(libcurl UNKNOWN IMPORTED GLOBAL)
     set_target_properties(libcurl PROPERTIES
       IMPORTED_LOCATION ${CURL_LIBRARIES}
@@ -30,13 +30,14 @@ if(NOT BUILD_STATIC_DEPS)
   endif()
 endif()
 
-#for LMDB
+# for LMDB
 # Check whether we're on a 32-bit or 64-bit system
 if(CMAKE_SIZEOF_VOID_P EQUAL "8")
   set(DEFAULT_BUILD_64 ON)
 else()
   set(DEFAULT_BUILD_64 OFF)
 endif()
+
 option(BUILD_64 "Build for 64-bit? 'OFF' builds for 32-bit." ${DEFAULT_BUILD_64})
 
 if(BUILD_64)
@@ -44,8 +45,8 @@ if(BUILD_64)
 else()
   set(ARCH_WIDTH "32")
 endif()
-message(STATUS "Building for a ${ARCH_WIDTH}-bit system")
 
+message(STATUS "Building for a ${ARCH_WIDTH}-bit system")
 
 file(GLOB cpr_sources ${conf_depends} cpr/cpr/*.cpp)
 
@@ -55,14 +56,22 @@ target_include_directories(cpr PUBLIC cpr/include)
 target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
 add_library(cpr::cpr ALIAS cpr)
 
-#for LMDB
-find_package (Threads)
+# for LMDB
+find_package(Threads)
 add_subdirectory(db_drivers)
 add_subdirectory(db)
 
 add_subdirectory(nlhomann)
 add_subdirectory(served)
 add_executable(testnetfaucet testnetfaucet.cpp)
+add_executable(data_table datacursor.cpp)
+add_executable(history_table historycursor.cpp)
+
+target_include_directories(data_table PUBLIC db)
+target_include_directories(history_table PUBLIC db)
+target_link_libraries(data_table PUBLIC database)
+target_link_libraries(history_table PUBLIC database)
+
 target_include_directories(testnetfaucet PUBLIC db nlhomann/include served/src)
 
 target_link_libraries(testnetfaucet PUBLIC database cpr::cpr nlohmann_json served)
